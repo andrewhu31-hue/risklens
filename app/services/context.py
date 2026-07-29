@@ -19,10 +19,21 @@ class PortfolioContext:
     weights: dict[str, float]
 
 
-def load_portfolio_context(db: Session, portfolio_id: str) -> PortfolioContext:
+def get_owned_portfolio(db: Session, portfolio_id: str, user_id: str) -> Portfolio:
+    """Loads a portfolio and verifies `user_id` owns it.
+
+    Missing and not-owned both raise the identical "not found" error — a
+    non-owner shouldn't be able to tell the difference between an ID that
+    doesn't exist and one that belongs to someone else.
+    """
     portfolio = db.get(Portfolio, portfolio_id)
-    if portfolio is None:
+    if portfolio is None or portfolio.owner_id != user_id:
         raise ValueError("portfolio not found")
+    return portfolio
+
+
+def load_portfolio_context(db: Session, portfolio_id: str, user_id: str) -> PortfolioContext:
+    portfolio = get_owned_portfolio(db, portfolio_id, user_id)
 
     holdings = portfolio.holdings
     if not holdings:

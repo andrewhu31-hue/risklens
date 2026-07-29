@@ -1,9 +1,45 @@
 import axios from "axios";
 
+const TOKEN_KEY = "risklens_token";
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
   headers: import.meta.env.VITE_API_KEY ? { "X-API-Key": import.meta.env.VITE_API_KEY } : {},
 });
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+
+export const register = (email, password) =>
+  api.post("/auth/register", { email, password }).then((r) => {
+    localStorage.setItem(TOKEN_KEY, r.data.access_token);
+    return r.data;
+  });
+
+export const login = (email, password) =>
+  api.post("/auth/login", { email, password }).then((r) => {
+    localStorage.setItem(TOKEN_KEY, r.data.access_token);
+    return r.data;
+  });
+
+export const logout = () => localStorage.removeItem(TOKEN_KEY);
 
 export const createPortfolio = (name, benchmark) =>
   api.post("/portfolios", { name, benchmark }).then((r) => r.data);

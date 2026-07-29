@@ -49,7 +49,10 @@ def ensure_price_history(db: Session, ticker: str) -> None:
     new_rows = [
         PriceHistory(ticker=ticker, date=idx.date(), adj_close=float(row["Close"]))
         for idx, row in data.iterrows()
-        if idx.date() not in existing_dates
+        # yfinance can return a NaN close for the current day's still-in-progress
+        # bar (e.g. queried while the market is open) — skip it rather than
+        # crash the insert; it'll be fetched properly once the day has closed.
+        if idx.date() not in existing_dates and pd.notna(row["Close"])
     ]
     if new_rows:
         db.add_all(new_rows)

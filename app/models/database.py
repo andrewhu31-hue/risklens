@@ -26,10 +26,20 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     benchmark: Mapped[str] = mapped_column(String, default="SPY")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

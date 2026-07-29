@@ -86,13 +86,20 @@ Holding
 
 PriceHistory
   id · ticker · date · adj_close   (unique on ticker+date)
+
+User
+  id · email · hashed_password · created_at
 ```
 
 ## API Reference
 
+All `/portfolios/*` endpoints require an `Authorization: Bearer <token>` header from `/auth/login` or `/auth/register`.
+
 | Method | Path | Description |
 |---|---|---|
-| POST | `/portfolios` | Create a portfolio (`name`, `benchmark`) |
+| POST | `/auth/register` | Create an account, returns a bearer token |
+| POST | `/auth/login` | Log in, returns a bearer token |
+| POST | `/portfolios` | Create a portfolio (`name`, `benchmark`), owned by the caller |
 | GET | `/portfolios/{id}` | Portfolio details + holdings |
 | POST | `/portfolios/{id}/holdings` | Add holdings (JSON list) |
 | POST | `/portfolios/{id}/holdings/csv` | Add holdings from a CSV (`ticker`, `shares`, optional `cost_basis`, `sector`) |
@@ -109,21 +116,23 @@ PriceHistory
 | Endpoint | Limit |
 |---|---|
 | Every endpoint (default) | 60 / minute per IP |
+| `/auth/register`, `/auth/login` | 10 / minute |
 | `/refresh` | 10 / minute |
 | `/ask` | 20 / minute |
 | `/holdings/csv` | 10 / minute |
 
 ## Security
 
-- **Rate limiting** — a default 60/minute-per-IP limit applies to every endpoint via `SlowAPIMiddleware`; the AI endpoints (`/refresh`, `/ask`) and CSV upload tighten this further since they're the most expensive to abuse (external API calls, file parsing).
-- **Non-enumerable IDs** — portfolio IDs are UUIDs, not sequential integers. There's no authentication layer yet, so a guessable ID would let anyone browse another portfolio just by incrementing it (an IDOR vulnerability); UUIDs close that off without requiring a full auth system.
-- **Locked-down CORS** — the API only accepts cross-origin requests from an explicit allowlist (`CORS_ORIGINS` in `.env`), not a wildcard. `allow_credentials` is `False` since the app doesn't use cookies/sessions.
+- **Authentication & ownership** — every portfolio belongs to a `User`, created via `/auth/register`/`/auth/login` (JWT bearer tokens, bcrypt-hashed passwords). Every portfolio-touching endpoint requires a valid token and verifies the requester actually owns the portfolio; a non-owner gets the identical "not found" response whether the ID is invalid or just belongs to someone else, so an attacker can't distinguish the two. See `app/services/auth.py` and `get_owned_portfolio` in `app/services/context.py`.
+- **Rate limiting** — a default 60/minute-per-IP limit applies to every endpoint via `SlowAPIMiddleware`; auth and the AI endpoints (`/refresh`, `/ask`) tighten this further since they're the most expensive to abuse (brute-force attempts, external API calls).
+- **Non-enumerable IDs** — portfolio and user IDs are UUIDs, not sequential integers, on top of the ownership check above.
+- **Locked-down CORS** — the API only accepts cross-origin requests from an explicit allowlist (`CORS_ORIGINS` in `.env`), not a wildcard. `allow_credentials` is `False` since auth uses a bearer token, not cookies.
 - **Input validation** — tickers are validated against a strict `[A-Z0-9.-]{1,10}` pattern and share counts must be positive, on both the JSON and CSV ingestion paths, rejecting malformed or injection-shaped input before it ever reaches the database.
 - **CSV upload limits** — capped at 1 MB and 500 rows, so a malicious or malformed file can't be used to exhaust memory or flood the database.
 - **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` are set on every response.
 - **No secrets in source** — `.env` is gitignored; only `.env.example` (placeholder values) is committed.
 
-**Known gap:** there's no authentication — anyone with a portfolio's ID can view or modify it. UUIDs make that ID practically un-guessable, but they don't replace real access control. Adding user accounts/ownership would be the next real step if this went past a portfolio project.
+**Known tradeoff:** the frontend stores its JWT in `localStorage` and attaches it via an `Authorization` header rather than an httpOnly cookie. That's the standard pattern for a token-based SPA and avoids needing CSRF protection, but it does mean a successful XSS attack could exfiltrate the token — an httpOnly cookie would close that gap at the cost of adding CSRF machinery, which wasn't worth it at this project's scope.
 
 ## Project Structure
 
@@ -131,20 +140,23 @@ PriceHistory
 risklens/
 ├── app/
 │   ├── api/                  # Route handlers (one file per resource)
+│   │   └── auth.py           # register/login
 │   ├── analytics/            # returns, risk, factors, optimizer, stress — pure functions
 │   ├── models/
-│   │   └── database.py       # SQLAlchemy ORM (Portfolio, Holding, PriceHistory)
+│   │   └── database.py       # SQLAlchemy ORM (User, Portfolio, Holding, PriceHistory)
 │   ├── services/
 │   │   ├── prices.py         # yfinance fetch + cache
-│   │   ├── context.py        # shared PortfolioContext loader used by every endpoint
+│   │   ├── auth.py           # password hashing, JWT issue/verify, get_current_user dependency
+│   │   ├── context.py        # shared PortfolioContext loader + ownership check, used by every endpoint
 │   │   ├── ai.py             # Anthropic client wrapper
 │   │   └── review.py         # context-block builder + debrief/ask prompts
 │   ├── limiter.py
 │   └── main.py
 ├── frontend/
 │   ├── src/
-│   │   ├── api/index.js
+│   │   ├── api/index.js      # axios instance + auth token interceptor
 │   │   ├── pages/
+│   │   │   ├── Login.jsx     # register/login
 │   │   │   ├── Upload.jsx    # create portfolio, manual entry or CSV
 │   │   │   └── Dashboard.jsx # 7-tab layout
 │   │   └── components/
@@ -153,7 +165,8 @@ risklens/
 ├── tests/
 │   ├── test_risk.py          # vol/Sharpe/VaR/CVaR against hand-computed reference values
 │   ├── test_factors.py       # eigenvalues sum to trace(Σ); eigenvectors orthonormal
-│   └── test_optimizer.py     # min-variance weights sum to 1, beat every single-asset vol
+│   ├── test_optimizer.py     # min-variance weights sum to 1, beat every single-asset vol
+│   └── test_auth.py          # password hashing + JWT round-trip, tampered/expired token rejection
 ├── requirements.txt
 └── .env.example
 ```

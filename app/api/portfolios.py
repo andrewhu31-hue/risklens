@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.limiter import limiter
-from app.models.database import Holding, Portfolio, get_db
-from app.services.context import load_portfolio_context
+from app.models.database import Holding, Portfolio, User, get_db
+from app.services.auth import get_current_user
+from app.services.context import get_owned_portfolio, load_portfolio_context
 from app.services.review import generate_debrief
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
@@ -59,8 +60,10 @@ class HoldingIn(BaseModel):
 
 
 @router.post("")
-def create_portfolio(body: PortfolioCreate, db: Session = Depends(get_db)):
-    portfolio = Portfolio(name=body.name, benchmark=body.benchmark)
+def create_portfolio(
+    body: PortfolioCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    portfolio = Portfolio(owner_id=current_user.id, name=body.name, benchmark=body.benchmark)
     db.add(portfolio)
     db.commit()
     db.refresh(portfolio)
@@ -68,9 +71,12 @@ def create_portfolio(body: PortfolioCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{portfolio_id}")
-def get_portfolio(portfolio_id: str, db: Session = Depends(get_db)):
-    portfolio = db.get(Portfolio, portfolio_id)
-    if portfolio is None:
+def get_portfolio(
+    portfolio_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    try:
+        portfolio = get_owned_portfolio(db, portfolio_id, current_user.id)
+    except ValueError:
         raise HTTPException(404, "portfolio not found")
     return {
         "id": portfolio.id,
@@ -84,9 +90,15 @@ def get_portfolio(portfolio_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{portfolio_id}/holdings")
-def add_holdings(portfolio_id: str, holdings: list[HoldingIn], db: Session = Depends(get_db)):
-    portfolio = db.get(Portfolio, portfolio_id)
-    if portfolio is None:
+def add_holdings(
+    portfolio_id: str,
+    holdings: list[HoldingIn],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        get_owned_portfolio(db, portfolio_id, current_user.id)
+    except ValueError:
         raise HTTPException(404, "portfolio not found")
     if not holdings:
         raise HTTPException(400, "no holdings provided")
@@ -107,10 +119,15 @@ def add_holdings(portfolio_id: str, holdings: list[HoldingIn], db: Session = Dep
 @router.post("/{portfolio_id}/holdings/csv")
 @limiter.limit("10/minute")
 async def add_holdings_csv(
-    request: Request, portfolio_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)
+    request: Request,
+    portfolio_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    portfolio = db.get(Portfolio, portfolio_id)
-    if portfolio is None:
+    try:
+        get_owned_portfolio(db, portfolio_id, current_user.id)
+    except ValueError:
         raise HTTPException(404, "portfolio not found")
 
     raw = await file.read()
@@ -161,9 +178,14 @@ async def add_holdings_csv(
 
 @router.post("/{portfolio_id}/refresh")
 @limiter.limit("10/minute")
-def refresh_portfolio(request: Request, portfolio_id: str, db: Session = Depends(get_db)):
+def refresh_portfolio(
+    request: Request,
+    portfolio_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
-        ctx = load_portfolio_context(db, portfolio_id)
+        ctx = load_portfolio_context(db, portfolio_id, current_user.id)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

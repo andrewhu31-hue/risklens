@@ -18,7 +18,7 @@ const TABS = [
   { id: "ask", label: "Ask AI", Component: AskTab },
 ];
 
-export default function Dashboard({ portfolioId, onReset }) {
+export default function Dashboard({ portfolioId, onReset, onLogout }) {
   const [tab, setTab] = useState("overview");
   const [portfolio, setPortfolio] = useState(null);
 
@@ -39,12 +39,20 @@ export default function Dashboard({ portfolioId, onReset }) {
             {portfolio ? `${portfolio.holdings.length} holdings · benchmark ${portfolio.benchmark}` : ""}
           </p>
         </div>
-        <button
-          onClick={onReset}
-          className="text-sm text-slate-400 hover:text-slate-200 border border-white/10 rounded-lg px-3 py-1.5"
-        >
-          New portfolio
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onReset}
+            className="text-sm text-slate-400 hover:text-slate-200 border border-white/10 rounded-lg px-3 py-1.5"
+          >
+            New portfolio
+          </button>
+          <button
+            onClick={onLogout}
+            className="text-sm text-slate-400 hover:text-slate-200 border border-white/10 rounded-lg px-3 py-1.5"
+          >
+            Log out
+          </button>
+        </div>
       </header>
 
       <nav className="flex gap-1 mb-6 border-b border-white/10 overflow-x-auto">

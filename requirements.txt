@@ -10,4 +10,7 @@ scipy
 slowapi
 anthropic
 python-multipart
+pyjwt
+bcrypt
+email-validator
 pytest

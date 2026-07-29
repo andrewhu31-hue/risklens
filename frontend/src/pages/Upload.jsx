@@ -3,7 +3,7 @@ import { addHoldings, addHoldingsCsv, createPortfolio } from "../api";
 
 const emptyRow = () => ({ ticker: "", shares: "" });
 
-export default function Upload({ onReady }) {
+export default function Upload({ onReady, onLogout }) {
   const [name, setName] = useState("My Portfolio");
   const [benchmark, setBenchmark] = useState("SPY");
   const [rows, setRows] = useState([emptyRow(), emptyRow(), emptyRow()]);
@@ -49,6 +49,11 @@ export default function Upload({ onReady }) {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-16">
+      <div className="flex justify-end">
+        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-slate-300">
+          Log out
+        </button>
+      </div>
       <div className="mb-10 text-center">
         <h1 className="text-3xl font-bold text-slate-100">RiskLens</h1>
         <p className="text-slate-400 mt-2">

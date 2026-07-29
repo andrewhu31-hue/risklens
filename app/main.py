@@ -7,7 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import ask, correlation, factors, optimizer, portfolios, risk, stress
+from app.api import ask, auth, correlation, factors, optimizer, portfolios, risk, stress
 from app.limiter import limiter
 from app.models.database import init_db
 
@@ -40,7 +40,7 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -53,6 +53,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+app.include_router(auth.router)
 app.include_router(portfolios.router)
 app.include_router(risk.router)
 app.include_router(factors.router)
