@@ -9,7 +9,7 @@ router = APIRouter(prefix="/portfolios", tags=["factors"])
 
 
 @router.get("/{portfolio_id}/factors")
-def get_factors(portfolio_id: int, db: Session = Depends(get_db)):
+def get_factors(portfolio_id: str, db: Session = Depends(get_db)):
     try:
         ctx = load_portfolio_context(db, portfolio_id)
     except ValueError as e:

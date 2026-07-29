@@ -9,7 +9,7 @@ router = APIRouter(prefix="/portfolios", tags=["stress"])
 
 
 @router.get("/{portfolio_id}/stress")
-def get_stress(portfolio_id: int, db: Session = Depends(get_db)):
+def get_stress(portfolio_id: str, db: Session = Depends(get_db)):
     try:
         ctx = load_portfolio_context(db, portfolio_id)
     except ValueError as e:

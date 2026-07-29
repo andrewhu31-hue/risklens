@@ -16,7 +16,7 @@ class AskBody(BaseModel):
 
 @router.post("/{portfolio_id}/ask")
 @limiter.limit("20/minute")
-def ask(request: Request, portfolio_id: int, body: AskBody, db: Session = Depends(get_db)):
+def ask(request: Request, portfolio_id: str, body: AskBody, db: Session = Depends(get_db)):
     try:
         ctx = load_portfolio_context(db, portfolio_id)
     except ValueError as e:

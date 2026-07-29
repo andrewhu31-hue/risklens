@@ -8,7 +8,7 @@ router = APIRouter(prefix="/portfolios", tags=["correlation"])
 
 
 @router.get("/{portfolio_id}/correlation")
-def get_correlation(portfolio_id: int, db: Session = Depends(get_db)):
+def get_correlation(portfolio_id: str, db: Session = Depends(get_db)):
     try:
         ctx = load_portfolio_context(db, portfolio_id)
     except ValueError as e:

@@ -108,8 +108,22 @@ PriceHistory
 
 | Endpoint | Limit |
 |---|---|
+| Every endpoint (default) | 60 / minute per IP |
 | `/refresh` | 10 / minute |
 | `/ask` | 20 / minute |
+| `/holdings/csv` | 10 / minute |
+
+## Security
+
+- **Rate limiting** — a default 60/minute-per-IP limit applies to every endpoint via `SlowAPIMiddleware`; the AI endpoints (`/refresh`, `/ask`) and CSV upload tighten this further since they're the most expensive to abuse (external API calls, file parsing).
+- **Non-enumerable IDs** — portfolio IDs are UUIDs, not sequential integers. There's no authentication layer yet, so a guessable ID would let anyone browse another portfolio just by incrementing it (an IDOR vulnerability); UUIDs close that off without requiring a full auth system.
+- **Locked-down CORS** — the API only accepts cross-origin requests from an explicit allowlist (`CORS_ORIGINS` in `.env`), not a wildcard. `allow_credentials` is `False` since the app doesn't use cookies/sessions.
+- **Input validation** — tickers are validated against a strict `[A-Z0-9.-]{1,10}` pattern and share counts must be positive, on both the JSON and CSV ingestion paths, rejecting malformed or injection-shaped input before it ever reaches the database.
+- **CSV upload limits** — capped at 1 MB and 500 rows, so a malicious or malformed file can't be used to exhaust memory or flood the database.
+- **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` are set on every response.
+- **No secrets in source** — `.env` is gitignored; only `.env.example` (placeholder values) is committed.
+
+**Known gap:** there's no authentication — anyone with a portfolio's ID can view or modify it. UUIDs make that ID practically un-guessable, but they don't replace real access control. Adding user accounts/ownership would be the next real step if this went past a portfolio project.
 
 ## Project Structure
 

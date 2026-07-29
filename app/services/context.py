@@ -19,7 +19,7 @@ class PortfolioContext:
     weights: dict[str, float]
 
 
-def load_portfolio_context(db: Session, portfolio_id: int) -> PortfolioContext:
+def load_portfolio_context(db: Session, portfolio_id: str) -> PortfolioContext:
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise ValueError("portfolio not found")

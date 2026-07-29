@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import date, datetime
 
 from dotenv import load_dotenv
@@ -6,6 +7,13 @@ from sqlalchemy import Date, DateTime, Float, ForeignKey, String, UniqueConstrai
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 load_dotenv()
+
+
+def _new_id() -> str:
+    # UUIDs instead of sequential integers so portfolio IDs can't be
+    # enumerated (there's no auth/ownership check yet, so a guessable ID
+    # would let anyone browse someone else's portfolio by incrementing it).
+    return str(uuid.uuid4())
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./risklens.db")
 
@@ -21,7 +29,7 @@ class Base(DeclarativeBase):
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
     name: Mapped[str] = mapped_column(String, nullable=False)
     benchmark: Mapped[str] = mapped_column(String, default="SPY")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -35,7 +43,7 @@ class Holding(Base):
     __tablename__ = "holdings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"))
+    portfolio_id: Mapped[str] = mapped_column(ForeignKey("portfolios.id"))
     ticker: Mapped[str] = mapped_column(String, nullable=False)
     shares: Mapped[float] = mapped_column(Float, nullable=False)
     cost_basis: Mapped[float | None] = mapped_column(Float, nullable=True)
