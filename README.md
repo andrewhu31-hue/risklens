@@ -210,6 +210,15 @@ npm run dev             # http://localhost:5173
 pytest tests/
 ```
 
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master` and on every pull request:
+
+- **Backend** — `ruff check .` and `pytest tests/` on Python 3.11 and 3.12
+- **Frontend** — `npm ci` and `npm run build`
+
+Run the same lint locally with `pip install ruff && ruff check .`.
+
 18 tests validate the analytics against independently-computed reference values — not just "it ran": covariance matches `np.cov`, eigenvalues sum to the covariance matrix's trace, eigenvectors are orthonormal, risk contributions sum to 1, minimum-variance weights beat every single-asset volatility, and VaR/CVaR match a percentile-based reference computed directly in the test.
 
 ## Design
