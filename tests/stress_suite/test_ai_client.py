@@ -62,7 +62,10 @@ def test_key_with_trailing_newline_is_sent_cleanly(monkeypatch):
     def handler(request: httpx.Request):
         auth = request.headers.get("authorization", "")
         seen["key"] = request.headers.get("x-api-key") or auth.removeprefix("Bearer ")
-        seen["model"] = __import__("json").loads(request.content)["model"]
+        payload = __import__("json").loads(request.content)
+        seen["model"] = payload["model"]
+        seen["thinking"] = payload.get("thinking")
+        seen["max_tokens"] = payload["max_tokens"]
         return httpx.Response(
             200,
             json={
@@ -77,6 +80,27 @@ def test_key_with_trailing_newline_is_sent_cleanly(monkeypatch):
     assert ai.ask_claude("sys", "q") == "Concentration in NVDA."
     assert seen["key"] == "sk-ant-api03-abc"
     assert seen["model"] == "claude-sonnet-5-5"
+    # Sonnet 5.5 thinks by default; short answers turn it off so thinking
+    # can't consume the token budget and leave no text.
+    assert seen["thinking"] == {"type": "between_tools"}
+    assert seen["max_tokens"] >= 1000
+
+
+def test_older_model_gets_no_thinking_param(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-abc")
+    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+    seen = {}
+
+    def handler(request):
+        seen.update(__import__("json").loads(request.content))
+        return httpx.Response(200, json={
+            "id": "m", "type": "message", "role": "assistant", "model": "m",
+            "content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+            "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1}})
+
+    _client_with(handler)
+    assert ai.ask_claude("s", "q") == "ok"
+    assert "thinking" not in seen
 
 
 def test_model_can_be_overridden(monkeypatch):

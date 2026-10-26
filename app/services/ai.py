@@ -36,6 +36,15 @@ def model_name() -> str:
     return clean_api_key(os.getenv("ANTHROPIC_MODEL")) or DEFAULT_MODEL
 
 
+def _thinking_params(model: str) -> dict:
+    """Claude 5.5-generation models think by default, which spends part of
+    max_tokens before any text and adds latency. These are short, grounded
+    answers, so turn it off there ({"type": "disabled"} is a 400 on those
+    models; "between_tools" with no tools means no thinking). Older models
+    don't think unless asked, so they get nothing extra."""
+    return {"thinking": {"type": "between_tools"}} if model.endswith("-5-5") else {}
+
+
 def key_status() -> str:
     """'missing', 'malformed' or 'present' — for /health; never the key itself."""
     key = clean_api_key(os.getenv("ANTHROPIC_API_KEY"))
@@ -64,14 +73,16 @@ def _get_client() -> Anthropic:
     return _client
 
 
-def ask_claude(system: str, prompt: str, max_tokens: int = 600) -> str:
+def ask_claude(system: str, prompt: str, max_tokens: int = 1200) -> str:
     client = _get_client()
+    model = model_name()
     try:
         response = client.messages.create(
-            model=model_name(),
+            model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
+            **_thinking_params(model),
         )
     except anthropic.AuthenticationError as e:
         raise RuntimeError(

@@ -57,4 +57,4 @@ def generate_debrief(ctx: PortfolioContext) -> str:
 def answer_question(ctx: PortfolioContext, question: str) -> str:
     context_block = build_context_block(ctx)
     prompt = f"{context_block}\n\nQuestion: {question}"
-    return ask_claude(SYSTEM_PROMPT, prompt, max_tokens=500)
+    return ask_claude(SYSTEM_PROMPT, prompt, max_tokens=1000)
