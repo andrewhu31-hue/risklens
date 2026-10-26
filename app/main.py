@@ -84,6 +84,7 @@ def health():
     from sqlalchemy import text
 
     from app.models.database import IS_SQLITE, engine
+    from app.services.ai import key_status, model_name
 
     try:
         with engine.connect() as conn:
@@ -95,5 +96,7 @@ def health():
         "status": "ok" if db_ok else "degraded",
         "database": "sqlite (temporary)" if IS_SQLITE and os.getenv("VERCEL") else ("sqlite" if IS_SQLITE else "postgresql"),
         "database_ok": db_ok,
-        "ai_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "ai_configured": key_status() == "present",
+        "ai_key": key_status(),  # missing | malformed | present (never the key)
+        "ai_model": model_name(),
     }
