@@ -80,4 +80,20 @@ app.include_router(ask.router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    """Liveness plus which database backend is in use and whether it answers."""
+    from sqlalchemy import text
+
+    from app.models.database import IS_SQLITE, engine
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "database": "sqlite (temporary)" if IS_SQLITE and os.getenv("VERCEL") else ("sqlite" if IS_SQLITE else "postgresql"),
+        "database_ok": db_ok,
+        "ai_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+    }
