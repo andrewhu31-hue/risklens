@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
+
+from app.analytics import qp
 
 TRADING_DAYS = 252
 
@@ -24,49 +25,70 @@ def _portfolio_stats(w: np.ndarray, mean_returns: np.ndarray, cov: np.ndarray) -
     return {"return": ret, "volatility": vol, "sharpe": sharpe}
 
 
-def _solve(objective, n: int, extra_constraints: list | None = None) -> np.ndarray:
-    x0 = np.repeat(1 / n, n)
-    bounds = [(0.0, 1.0)] * n
-    constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1}]
-    if extra_constraints:
-        constraints += extra_constraints
-
-    result = minimize(objective, x0, method="SLSQP", bounds=bounds, constraints=constraints)
-    if not result.success or not np.all(np.isfinite(result.x)):
-        raise OptimizationError(f"optimizer did not converge: {result.message}")
-    w = np.clip(result.x, 0.0, 1.0)
-    return w / w.sum()
-
-
 def _check_inputs(cov: np.ndarray, mean_returns: np.ndarray | None = None) -> None:
     if not np.all(np.isfinite(cov)) or (mean_returns is not None and not np.all(np.isfinite(mean_returns))):
         raise OptimizationError("covariance or mean returns contain non-finite values")
 
 
+def _qp(Q, A, b, x0) -> np.ndarray:
+    try:
+        x = qp.solve(Q, A, b, x0)
+    except qp.QPError as e:
+        raise OptimizationError(f"optimizer did not converge: {e}") from e
+    if not np.all(np.isfinite(x)):
+        raise OptimizationError("optimizer produced non-finite weights")
+    return x
+
+
 def min_variance_weights(cov: np.ndarray) -> np.ndarray:
+    """Long-only, fully invested minimum-variance weights."""
     _check_inputs(cov)
-    return _solve(lambda w: w @ cov @ w, cov.shape[0])
+    n = cov.shape[0]
+    w = _qp(cov, np.ones((1, n)), np.array([1.0]), np.repeat(1 / n, n))
+    return w / w.sum()
 
 
 def max_sharpe_weights(mean_returns: np.ndarray, cov: np.ndarray, risk_free: float = 0.0) -> np.ndarray:
-    def neg_sharpe(w: np.ndarray) -> float:
-        vol = np.sqrt(max(w @ cov @ w, 1e-12))
-        return -(w @ mean_returns - risk_free) / vol
-
+    """Long-only tangency portfolio. With excess returns e = mu - rf, maximizing
+    e'w / sqrt(w'Sw) over the simplex is equivalent to the convex problem
+    min y'Sy s.t. e'y = 1, y >= 0, then w = y / sum(y) (Cornuejols & Tutuncu)."""
     _check_inputs(cov, mean_returns)
-    return _solve(neg_sharpe, cov.shape[0])
+    excess = np.asarray(mean_returns, dtype=float) - risk_free
+    if not np.any(excess > 0):
+        raise OptimizationError("no holding has a positive expected excess return, so the maximum-Sharpe portfolio is undefined")
+    k = int(np.argmax(excess))
+    y0 = np.zeros(len(excess))
+    y0[k] = 1 / excess[k]
+    y = _qp(cov, excess.reshape(1, -1), np.array([1.0]), y0)
+    if y.sum() <= 0:
+        raise OptimizationError("optimizer produced an empty portfolio")
+    return y / y.sum()
 
 
 def efficient_frontier(mean_returns: np.ndarray, cov: np.ndarray, n_points: int = 20) -> list[dict]:
+    """Minimum-variance long-only portfolio for each target return between the
+    lowest and highest single-asset expected return."""
     n = cov.shape[0]
-    lo, hi = float(mean_returns.min()), float(mean_returns.max())
+    mu = np.asarray(mean_returns, dtype=float)
+    i_lo, i_hi = int(np.argmin(mu)), int(np.argmax(mu))
+    lo, hi = float(mu[i_lo]), float(mu[i_hi])
+    A = np.vstack([np.ones(n), mu])
     frontier = []
-    for target in np.linspace(lo, hi, n_points):
-        extra = [{"type": "eq", "fun": lambda w, t=target: w @ mean_returns - t}]
-        try:
-            w = _solve(lambda w: w @ cov @ w, n, extra_constraints=extra)
-        except OptimizationError:
-            continue  # leave out points the solver could not reach rather than mislabel them
+    steps = n_points if hi > lo else 1
+    for i, target in enumerate(np.linspace(lo, hi, steps)):
+        lam = 0.0 if steps == 1 else i / (steps - 1)  # exact 0 and 1 at the ends
+        x0 = np.zeros(n)
+        x0[i_lo] += 1 - lam
+        x0[i_hi] += lam
+        at_end = lam in (0.0, 1.0)
+        extreme = mu[i_hi] if lam == 1.0 else mu[i_lo]
+        if at_end and np.count_nonzero(np.isclose(mu, extreme, rtol=0, atol=1e-15)) == 1:
+            w = x0  # a unique highest/lowest-return asset is the only feasible portfolio
+        else:
+            try:
+                w = _qp(cov, A, np.array([1.0, target]), x0)
+            except OptimizationError:
+                continue  # leave out points the solver could not reach rather than mislabel them
         frontier.append({"return": float(target), "volatility": float(np.sqrt(max(w @ cov @ w, 0.0)))})
     return frontier
 
