@@ -12,7 +12,9 @@ def _get_client() -> Anthropic:
     if _client is None:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+            raise RuntimeError(
+                "The AI assistant isn't set up on this server yet: add an ANTHROPIC_API_KEY environment variable"
+            )
         _client = Anthropic(api_key=api_key)
     return _client
 

@@ -1,6 +1,7 @@
 import axios from "axios";
 
 const TOKEN_KEY = "risklens_token";
+export const SESSION_EXPIRED_EVENT = "risklens:session-expired";
 
 const api = axios.create({
   // Production builds call the API on the same origin under /api (see vercel.json).
@@ -19,8 +20,13 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // A rejected token: clear it and tell the app, so it returns to the login
+    // screen instead of carrying on and sending requests with no token at all.
+    // (Wrong-password responses on /auth/* are 401s too, but there's no session to end.)
+    const url = error.config?.url || "";
+    if (error.response?.status === 401 && !url.startsWith("/auth/")) {
       localStorage.removeItem(TOKEN_KEY);
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
     }
     return Promise.reject(error);
   }

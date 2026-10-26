@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { getToken, logout } from "./api";
+import { useEffect, useState } from "react";
+import { SESSION_EXPIRED_EVENT, getToken, logout } from "./api";
 import Dashboard from "./pages/Dashboard.jsx";
 import Login from "./pages/Login.jsx";
 import Upload from "./pages/Upload.jsx";
@@ -27,8 +27,27 @@ export default function App() {
     }
   };
 
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    const onExpired = () => {
+      setAuthed(false);
+      setNotice("Your session expired. Please log in again.");
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
+
   if (!authed) {
-    return <Login onAuthenticated={() => setAuthed(true)} />;
+    return (
+      <Login
+        notice={notice}
+        onAuthenticated={() => {
+          setNotice(null);
+          setAuthed(true);
+        }}
+      />
+    );
   }
 
   const handleLogout = () => {

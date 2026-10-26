@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { login, register } from "../api";
 
-export default function Login({ onAuthenticated }) {
+export default function Login({ onAuthenticated, notice }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,6 +33,8 @@ export default function Login({ onAuthenticated }) {
           {mode === "login" ? "Log in to your portfolios" : "Create an account"}
         </p>
       </div>
+
+      {notice && <p className="mb-4 text-sm text-amber-400 text-center">{notice}</p>}
 
       <form onSubmit={submit} className="glass-card p-6 space-y-4">
         <div className="flex gap-2 text-sm">
