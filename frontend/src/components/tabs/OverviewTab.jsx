@@ -4,7 +4,8 @@ import MetricCard from "../ui/MetricCard.jsx";
 import SectionHeader from "../ui/SectionHeader.jsx";
 import { BlockSkeleton, SkeletonGrid } from "../ui/Skeleton.jsx";
 
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
+import { num, pct } from "../../format.js";
+import DataNotes from "../ui/DataNotes.jsx";
 
 export default function OverviewTab({ portfolioId }) {
   const [risk, setRisk] = useState(null);
@@ -56,9 +57,11 @@ export default function OverviewTab({ portfolioId }) {
           tone={risk.annualized_return >= 0 ? "positive" : "negative"}
         />
         <MetricCard label="Annualized Volatility" value={pct(risk.annualized_volatility)} />
-        <MetricCard label="Sharpe Ratio" value={risk.sharpe_ratio.toFixed(2)} />
+        <MetricCard label="Sharpe Ratio" value={num(risk.sharpe_ratio)} />
         <MetricCard label="Max Drawdown" value={pct(risk.max_drawdown)} tone="negative" />
       </div>
+
+      <DataNotes window={risk.window} warnings={risk.warnings} />
 
       <div className="glass-card p-5">
         <SectionHeader title="AI Risk Debrief" subtitle="Grounded in the numbers above" />
@@ -66,7 +69,7 @@ export default function OverviewTab({ portfolioId }) {
           <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{debrief}</p>
         ) : debriefError ? (
           <p className="text-sm text-amber-400">
-            {debriefError}. Set ANTHROPIC_API_KEY in the backend .env to enable this.
+            {debriefError}. Set ANTHROPIC_API_KEY on the server to enable this.
           </p>
         ) : (
           <BlockSkeleton height="h-20" />

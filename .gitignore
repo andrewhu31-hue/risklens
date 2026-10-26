@@ -12,3 +12,7 @@ frontend/.env
 frontend/.env.local
 
 .DS_Store
+
+# local test/benchmark output
+reports/
+.venv/

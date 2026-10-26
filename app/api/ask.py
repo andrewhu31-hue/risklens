@@ -1,22 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.limiter import limiter
+from app.api.deps import load_context
+from app.limiter import AI_LIMIT, limiter
 from app.models.database import User, get_db
 from app.services.auth import get_current_user
-from app.services.context import load_portfolio_context
 from app.services.review import answer_question
 
 router = APIRouter(prefix="/portfolios", tags=["ask"])
 
+MAX_QUESTION_CHARS = 2000
+
 
 class AskBody(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
 
 
 @router.post("/{portfolio_id}/ask")
-@limiter.limit("20/minute")
+@limiter.limit(AI_LIMIT)
 def ask(
     request: Request,
     portfolio_id: str,
@@ -24,10 +26,7 @@ def ask(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        ctx = load_portfolio_context(db, portfolio_id, current_user.id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    ctx = load_context(db, portfolio_id, current_user.id)
     try:
         answer = answer_question(ctx, body.question)
     except RuntimeError as e:

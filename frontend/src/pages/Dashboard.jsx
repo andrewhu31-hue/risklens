@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getPortfolio } from "../api";
+import { deleteHolding, getPortfolio } from "../api";
 import AskTab from "../components/tabs/AskTab.jsx";
 import CorrelationTab from "../components/tabs/CorrelationTab.jsx";
 import FactorsTab from "../components/tabs/FactorsTab.jsx";
@@ -21,12 +21,33 @@ const TABS = [
 export default function Dashboard({ portfolioId, onReset, onLogout }) {
   const [tab, setTab] = useState("overview");
   const [portfolio, setPortfolio] = useState(null);
+  const [version, setVersion] = useState(0); // bump to reload every tab after an edit
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     getPortfolio(portfolioId)
       .then(setPortfolio)
-      .catch(() => {});
-  }, [portfolioId]);
+      .catch((e) => {
+        if (e?.response?.status === 404) setNotFound(true);
+      });
+  }, [portfolioId, version]);
+
+  const removePosition = async (ticker) => {
+    if (!window.confirm(`Remove ${ticker} from this portfolio?`)) return;
+    await deleteHolding(portfolioId, ticker);
+    setVersion((v) => v + 1);
+  };
+
+  if (notFound) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+        <p className="text-slate-300">This portfolio no longer exists.</p>
+        <button onClick={onReset} className="text-sky-400 hover:text-sky-300 text-sm">
+          Back to your portfolios
+        </button>
+      </div>
+    );
+  }
 
   const ActiveTab = TABS.find((t) => t.id === tab)?.Component;
 
@@ -36,15 +57,34 @@ export default function Dashboard({ portfolioId, onReset, onLogout }) {
         <div>
           <h1 className="text-xl font-semibold text-slate-100">{portfolio?.name || "Portfolio"}</h1>
           <p className="text-sm text-slate-400">
-            {portfolio ? `${portfolio.holdings.length} holdings · benchmark ${portfolio.benchmark}` : ""}
+            {portfolio ? `${portfolio.positions.length} positions · benchmark ${portfolio.benchmark}` : ""}
           </p>
+          {portfolio && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {portfolio.positions.map((p) => (
+                <span
+                  key={p.ticker}
+                  className="text-xs text-slate-300 border border-white/10 rounded-md pl-2 pr-1 py-0.5 flex items-center gap-1"
+                >
+                  {p.ticker} · {p.shares.toLocaleString()}
+                  <button
+                    onClick={() => removePosition(p.ticker)}
+                    title={`Remove ${p.ticker}`}
+                    className="text-slate-500 hover:text-red-400 px-1"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <button
             onClick={onReset}
             className="text-sm text-slate-400 hover:text-slate-200 border border-white/10 rounded-lg px-3 py-1.5"
           >
-            New portfolio
+            All portfolios
           </button>
           <button
             onClick={onLogout}
@@ -69,7 +109,7 @@ export default function Dashboard({ portfolioId, onReset, onLogout }) {
         ))}
       </nav>
 
-      {ActiveTab && <ActiveTab portfolioId={portfolioId} />}
+      {ActiveTab && <ActiveTab key={`${tab}-${version}`} portfolioId={portfolioId} />}
     </div>
   );
 }

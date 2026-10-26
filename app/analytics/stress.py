@@ -1,5 +1,20 @@
+"""Historical crisis replay.
+
+Each holding is replayed on its OWN price history inside the window; one asset's
+missing dates never shift another asset's start or end. Holdings are classified:
+
+  * full    — traded on the window's first and last market day: included
+  * partial — first traded after the window opened or stopped before it closed
+              (IPO / delisting inside the window): excluded and listed, so the
+              portfolio number is never a silent mix of different sub-windows
+  * missing — fewer than 2 usable prices in the window: excluded and listed
+
+Included weights are renormalized, and the response says how much of the
+portfolio (by current weight) the number covers.
+"""
 from datetime import date
 
+import numpy as np
 import pandas as pd
 
 SCENARIOS = {
@@ -8,55 +23,94 @@ SCENARIOS = {
     "2022_selloff": {"label": "2022 Rate-Hike Selloff", "start": date(2022, 1, 1), "end": date(2022, 10, 1)},
 }
 
+EDGE_TOLERANCE_DAYS = 5
 
-def run_stress_tests(prices: pd.DataFrame, weights: dict[str, float]) -> list[dict]:
-    """Replay each holding's actual historical return during past crisis windows.
 
-    Holdings that didn't exist yet in a given window are excluded and flagged; the
-    remaining weights are renormalized so the scenario still reflects the portfolio's
-    actual tilt rather than silently erroring out.
+def _usable(series: pd.Series) -> pd.Series:
+    s = pd.to_numeric(series, errors="coerce")
+    return s[np.isfinite(s) & (s > 0)]
+
+
+def run_stress_tests(prices: pd.DataFrame, weights: dict[str, float], reference: str | None = None) -> list[dict]:
+    """Replay current weights through each crisis window.
+
+    `reference` is a market series (usually the benchmark) whose first/last trading
+    day in the window defines "the window" when deciding whether a holding covered
+    it fully; without one, the earliest/latest date any holding traded is used.
     """
     tickers = list(weights.keys())
     results = []
 
     for key, scenario in SCENARIOS.items():
-        mask = (prices.index.date >= scenario["start"]) & (prices.index.date <= scenario["end"])
-        window = prices.loc[mask, tickers]
+        start, end = pd.Timestamp(scenario["start"]), pd.Timestamp(scenario["end"])
+        in_window = {}
+        for t in tickers:
+            s = _usable(prices[t]) if t in prices.columns else pd.Series(dtype=float)
+            s = s[(s.index >= start) & (s.index <= end)]
+            if len(s) >= 2:
+                in_window[t] = s
 
-        available = [t for t in tickers if t in window.columns and window[t].notna().sum() > 1]
-        missing = [t for t in tickers if t not in available]
+        ref_dates = None
+        if reference and reference in prices.columns:
+            r = _usable(prices[reference])
+            r = r[(r.index >= start) & (r.index <= end)]
+            if len(r) >= 2:
+                ref_dates = (r.index.min(), r.index.max())
+        if ref_dates is None and in_window:
+            ref_dates = (min(s.index.min() for s in in_window.values()), max(s.index.max() for s in in_window.values()))
 
-        if not available:
+        missing = [t for t in tickers if t not in in_window]
+        # A few days' slack absorbs exchange-holiday differences between markets.
+        slack = pd.Timedelta(days=EDGE_TOLERANCE_DAYS)
+        partial = [
+            t
+            for t, s in in_window.items()
+            if s.index.min() > ref_dates[0] + slack or s.index.max() < ref_dates[1] - slack
+        ]
+        included = [t for t in tickers if t in in_window and t not in partial]
+
+        base = {
+            "scenario": key,
+            "label": scenario["label"],
+            "start": scenario["start"].isoformat(),
+            "end": scenario["end"].isoformat(),
+            "missing_tickers": missing,
+            "partial_tickers": partial,
+            "partial_ranges": {
+                t: [in_window[t].index.min().date().isoformat(), in_window[t].index.max().date().isoformat()]
+                for t in partial
+            },
+        }
+
+        total = sum(weights[t] for t in included)
+        if not included or total <= 0:
             results.append(
                 {
-                    "scenario": key,
-                    "label": scenario["label"],
-                    "start": scenario["start"].isoformat(),
-                    "end": scenario["end"].isoformat(),
+                    **base,
                     "applicable": False,
-                    "missing_tickers": missing,
+                    "coverage": "none",
+                    "coverage_weight": 0.0,
+                    "observed_start": None,
+                    "observed_end": None,
+                    "asset_returns": {},
                     "portfolio_return": None,
                 }
             )
             continue
 
-        sub = window[available].dropna()
-        renorm_total = sum(weights[t] for t in available)
-        renorm_weights = {t: weights[t] / renorm_total for t in available}
-
-        start_prices = sub.iloc[0]
-        end_prices = sub.iloc[-1]
-        asset_returns = (end_prices / start_prices) - 1
-        port_return = float(sum(asset_returns[t] * renorm_weights[t] for t in available))
+        asset_returns = {t: float(in_window[t].iloc[-1] / in_window[t].iloc[0] - 1) for t in included}
+        renorm = {t: weights[t] / total for t in included}
+        port_return = float(sum(asset_returns[t] * renorm[t] for t in included))
 
         results.append(
             {
-                "scenario": key,
-                "label": scenario["label"],
-                "start": scenario["start"].isoformat(),
-                "end": scenario["end"].isoformat(),
+                **base,
                 "applicable": True,
-                "missing_tickers": missing,
+                "coverage": "full" if len(included) == len(tickers) else "partial",
+                "coverage_weight": float(total / sum(weights.values())),
+                "observed_start": ref_dates[0].date().isoformat(),
+                "observed_end": ref_dates[1].date().isoformat(),
+                "asset_returns": asset_returns,
                 "portfolio_return": port_return,
             }
         )

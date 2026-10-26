@@ -134,10 +134,10 @@ export function CorrelationHeatmap({ tickers, matrix }) {
               <div
                 key={colTicker}
                 className="aspect-square flex items-center justify-center rounded text-xs tabular-nums"
-                style={{ background: colorFor(matrix[i][j]) }}
-                title={`${rowTicker} vs ${colTicker}: ${matrix[i][j].toFixed(2)}`}
+                style={{ background: matrix[i][j] == null ? "transparent" : colorFor(matrix[i][j]) }}
+                title={`${rowTicker} vs ${colTicker}: ${matrix[i][j] == null ? "undefined (constant price)" : matrix[i][j].toFixed(2)}`}
               >
-                {matrix[i][j].toFixed(2)}
+                {matrix[i][j] == null ? "—" : matrix[i][j].toFixed(2)}
               </div>
             ))}
           </div>

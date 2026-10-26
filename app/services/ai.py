@@ -4,6 +4,7 @@ import anthropic
 from anthropic import Anthropic
 
 _client: Anthropic | None = None
+MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
 
 def _get_client() -> Anthropic:
@@ -20,7 +21,7 @@ def ask_claude(system: str, prompt: str, max_tokens: int = 600) -> str:
     client = _get_client()
     try:
         response = client.messages.create(
-            model="claude-sonnet-5",
+            model=MODEL,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
@@ -28,4 +29,6 @@ def ask_claude(system: str, prompt: str, max_tokens: int = 600) -> str:
     except anthropic.APIStatusError as e:
         message = e.body.get("error", {}).get("message") if isinstance(e.body, dict) else str(e)
         raise RuntimeError(f"Anthropic API error: {message}") from e
+    except anthropic.APIError as e:  # connection errors, timeouts
+        raise RuntimeError(f"Anthropic API unavailable: {e}") from e
     return "".join(block.text for block in response.content if block.type == "text")

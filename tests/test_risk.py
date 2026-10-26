@@ -64,9 +64,12 @@ def test_historical_var_and_cvar_ordering():
     tail = [-0.02 * i for i in range(1, 11)]
     rets = pd.Series([0.01] * 90 + tail)
 
-    threshold = np.percentile(rets, 5)  # reference computation, independent of implementation
-    expected_var = -threshold
-    expected_cvar = -rets[rets <= threshold].mean()
+    # Hand-computed: with 100 days, the 95% tail is the 5 worst days
+    # (-0.20, -0.18, -0.16, -0.14, -0.12). VaR is the 5th worst loss, CVaR their mean.
+    # (Previously this reference was np.percentile's interpolated value — the same
+    # formula the implementation used, so it could not catch errors in it.)
+    expected_var = 0.12
+    expected_cvar = (0.20 + 0.18 + 0.16 + 0.14 + 0.12) / 5
 
     var_95 = historical_var(rets, 0.95)
     cvar_95 = historical_cvar(rets, 0.95)

@@ -1,20 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.analytics.risk import risk_report
+from app.api.deps import load_context, meta, portfolio_risk
+from app.limiter import ANALYTICS_LIMIT, limiter
 from app.models.database import User, get_db
 from app.services.auth import get_current_user
-from app.services.context import load_portfolio_context
 
 router = APIRouter(prefix="/portfolios", tags=["risk"])
 
 
 @router.get("/{portfolio_id}/risk")
+@limiter.limit(ANALYTICS_LIMIT)
 def get_risk(
-    portfolio_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    request: Request,
+    portfolio_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    try:
-        ctx = load_portfolio_context(db, portfolio_id, current_user.id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return risk_report(ctx.returns[ctx.tickers], ctx.weights, ctx.returns[ctx.benchmark])
+    ctx = load_context(db, portfolio_id, current_user.id)
+    return {**portfolio_risk(ctx), **meta(ctx)}

@@ -4,7 +4,7 @@ import { BarChart } from "../ui/Charts.jsx";
 import SectionHeader from "../ui/SectionHeader.jsx";
 import { BlockSkeleton } from "../ui/Skeleton.jsx";
 
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
+import { pct } from "../../format.js";
 
 export default function FactorsTab({ portfolioId }) {
   const [data, setData] = useState(null);

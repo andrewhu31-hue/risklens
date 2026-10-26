@@ -57,7 +57,14 @@ The factor decomposition is the core of the app: the return covariance matrix Σ
 
 ## Price Caching
 
-`app/services/prices.py` fetches daily prices per ticker via `yfinance` and caches them in `PriceHistory(ticker, date, adj_close)`. On each request, it only pulls the date range not already cached (from the last cached day to today, or from 2006-01-01 on first fetch — far enough back to cover the 2008 stress window). Repeated analysis on an already-synced portfolio hits the database, not the network.
+`app/services/prices.py` fetches daily prices per ticker via `yfinance` (in parallel, with a timeout) and caches them in `PriceHistory(ticker, date, adj_close)`, with a per-ticker `PriceFetch` log:
+
+- First fetch pulls everything from 2006-01-01 (covers the 2008 stress window); a cache that was never fully loaded is backfilled.
+- Later fetches pull only the tail, with a 10-day overlap. If the overlapping adjusted closes changed (a split or dividend re-based history), the full history is re-pulled so old- and new-basis prices never mix.
+- The cache counts as fresh once it holds the last complete weekday session, and a ticker checked today isn't re-asked for 6 hours (this includes tickers with no data).
+- If the provider fails, cached prices are used with a warning; only a ticker with nothing cached returns HTTP 503.
+
+Each ticker keeps its own history in the price matrix (no forward-fill, no shared row-dropping). Return-based statistics use simple returns on the dates where all holdings traded; responses include that `window` and any `warnings` (e.g. a young holding limiting the window, or a delisted holding with a stale last price). The benchmark never shortens the window. Stress replays use each holding's own prices inside each crisis window and report `coverage`, `coverage_weight`, `partial_tickers` and per-asset returns.
 
 ## AI Layer
 
@@ -99,9 +106,12 @@ All `/portfolios/*` endpoints require an `Authorization: Bearer <token>` header 
 |---|---|---|
 | POST | `/auth/register` | Create an account, returns a bearer token |
 | POST | `/auth/login` | Log in, returns a bearer token |
+| GET | `/portfolios` | List the caller's portfolios |
 | POST | `/portfolios` | Create a portfolio (`name`, `benchmark`), owned by the caller |
-| GET | `/portfolios/{id}` | Portfolio details + holdings |
-| POST | `/portfolios/{id}/holdings` | Add holdings (JSON list) |
+| GET | `/portfolios/{id}` | Portfolio details: individual lots (`holdings`) and lots summed per ticker (`positions`) |
+| DELETE | `/portfolios/{id}` | Delete a portfolio |
+| DELETE | `/portfolios/{id}/holdings/{ticker}` | Remove every lot of a ticker |
+| POST | `/portfolios/{id}/holdings` | Add holdings (JSON list, max 500 per request and per portfolio) |
 | POST | `/portfolios/{id}/holdings/csv` | Add holdings from a CSV (`ticker`, `shares`, optional `cost_basis`, `sector`) |
 | POST | `/portfolios/{id}/refresh` | Sync price history + generate AI debrief |
 | GET | `/portfolios/{id}/risk` | Return, volatility, Sharpe, Sortino, max drawdown, VaR/CVaR, beta |
@@ -115,16 +125,24 @@ All `/portfolios/*` endpoints require an `Authorization: Bearer <token>` header 
 
 | Endpoint | Limit |
 |---|---|
-| Every endpoint (default) | 60 / minute per IP |
+Signed-in requests are limited per user, anonymous ones per client IP, and each limit applies per endpoint (not per URL, so changing the portfolio id does not reset it). Limits are declared with explicit decorators on every route.
+
+| Endpoint | Limit |
+|---|---|
+| Analytics (`/risk`, `/factors`, `/correlation`, `/optimize`, `/stress`) | 60 / minute |
+| Reads (`GET /portfolios`, `GET /portfolios/{id}`) | 120 / minute |
+| Writes (create, add holdings, delete) | 30 / minute |
 | `/auth/register`, `/auth/login` | 10 / minute |
 | `/refresh` | 10 / minute |
-| `/ask` | 20 / minute |
+| `/ask` | 20 / minute (questions up to 2,000 characters) |
 | `/holdings/csv` | 10 / minute |
+
+Limit counters are kept in memory by default (per server instance). Set `RATE_LIMIT_STORAGE_URI` (e.g. a Redis URL) to share them across instances.
 
 ## Security
 
 - **Authentication & ownership** — every portfolio belongs to a `User`, created via `/auth/register`/`/auth/login` (JWT bearer tokens, bcrypt-hashed passwords). Every portfolio-touching endpoint requires a valid token and verifies the requester actually owns the portfolio; a non-owner gets the identical "not found" response whether the ID is invalid or just belongs to someone else, so an attacker can't distinguish the two. See `app/services/auth.py` and `get_owned_portfolio` in `app/services/context.py`.
-- **Rate limiting** — a default 60/minute-per-IP limit applies to every endpoint via `SlowAPIMiddleware`; auth and the AI endpoints (`/refresh`, `/ask`) tighten this further since they're the most expensive to abuse (brute-force attempts, external API calls).
+- **Rate limiting** — every route carries an explicit limit (see the table above), keyed per user when signed in and per IP otherwise; auth and the AI endpoints (`/refresh`, `/ask`) are tighter since they're the most expensive to abuse.
 - **Non-enumerable IDs** — portfolio and user IDs are UUIDs, not sequential integers, on top of the ownership check above.
 - **Locked-down CORS** — the API only accepts cross-origin requests from an explicit allowlist (`CORS_ORIGINS` in `.env`), not a wildcard. `allow_credentials` is `False` since auth uses a bearer token, not cookies.
 - **Input validation** — tickers are validated against a strict `[A-Z0-9.-]{1,10}` pattern and share counts must be positive, on both the JSON and CSV ingestion paths, rejecting malformed or injection-shaped input before it ever reaches the database.
@@ -185,7 +203,7 @@ risklens/
 cd risklens
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 cp .env.example .env
 # edit .env and set ANTHROPIC_API_KEY
@@ -207,10 +225,20 @@ npm run dev             # http://localhost:5173
 ### 3. Tests
 
 ```bash
-pytest tests/
+pip install -r requirements-dev.txt
+pytest tests/                       # 242 tests (1 skipped), offline: market data is faked
+TEST_DATABASE_URL=postgresql://user@host/db pytest tests/   # same suite on Postgres
 ```
 
-18 tests validate the analytics against independently-computed reference values — not just "it ran": covariance matches `np.cov`, eigenvalues sum to the covariance matrix's trace, eigenvectors are orthonormal, risk contributions sum to 1, minimum-variance weights beat every single-asset volatility, and VaR/CVaR match a percentile-based reference computed directly in the test.
+`tests/stress_suite/` holds the stress-test suite: hand-computed math checks, crisis-replay fixtures, adversarial inputs, cache and alignment behaviour, auth/authorization/rate limits, plus `perf_bench.py`, `concurrency_bench.py` and `live_curl_checks.sh` (run against `python -m tests.stress_suite.serve_mocked`).
+
+## Deploying to Vercel
+
+One Vercel project serves both the React build and the API (`api/index.py` runs the FastAPI app as a Python function under `/api`; see `vercel.json`).
+
+1. Import the repository in Vercel. No framework preset is needed; `vercel.json` sets the build.
+2. Add a Postgres database (e.g. Neon from the Vercel Marketplace). Its `DATABASE_URL` / `POSTGRES_URL` is picked up automatically. Without one, the API falls back to SQLite in `/tmp`, which is wiped whenever an instance is recycled — fine for a demo, not for real accounts.
+3. Optional environment variables: `ANTHROPIC_API_KEY` (enables the AI debrief and Ask tab), `JWT_SECRET` (otherwise a random secret is generated once and stored in the database), `RATE_LIMIT_STORAGE_URI`.
 
 ## Design
 

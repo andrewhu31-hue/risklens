@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { addHoldings, addHoldingsCsv, createPortfolio } from "../api";
+import { useEffect, useState } from "react";
+import { addHoldings, addHoldingsCsv, createPortfolio, deletePortfolio, listPortfolios } from "../api";
 
 const emptyRow = () => ({ ticker: "", shares: "" });
 
@@ -11,6 +11,23 @@ export default function Upload({ onReady, onLogout }) {
   const [mode, setMode] = useState("manual");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [saved, setSaved] = useState([]);
+
+  useEffect(() => {
+    listPortfolios()
+      .then(setSaved)
+      .catch(() => {});
+  }, []);
+
+  const removeSaved = async (id) => {
+    if (!window.confirm("Delete this portfolio? This cannot be undone.")) return;
+    try {
+      await deletePortfolio(id);
+      setSaved((s) => s.filter((p) => p.id !== id));
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Could not delete portfolio");
+    }
+  };
 
   const updateRow = (i, field, value) => {
     setRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
@@ -60,6 +77,28 @@ export default function Upload({ onReady, onLogout }) {
           Portfolio risk &amp; factor analysis — covariance, PCA, VaR, and AI-grounded review.
         </p>
       </div>
+
+      {saved.length > 0 && (
+        <div className="glass-card p-4 mb-6">
+          <p className="text-sm font-medium text-slate-200 mb-2">Your portfolios</p>
+          <ul className="divide-y divide-white/5">
+            {saved.map((p) => (
+              <li key={p.id} className="flex items-center justify-between py-2 text-sm">
+                <button onClick={() => onReady(p.id)} className="text-left text-sky-300 hover:text-sky-200">
+                  {p.name}
+                  <span className="text-slate-500">
+                    {" "}
+                    · {p.holdings} holdings · {p.benchmark}
+                  </span>
+                </button>
+                <button onClick={() => removeSaved(p.id)} className="text-xs text-slate-500 hover:text-red-400">
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <form onSubmit={submit} className="glass-card p-6 space-y-6">
         <div className="grid grid-cols-2 gap-4">

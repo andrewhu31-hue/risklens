@@ -1,5 +1,5 @@
 from app.analytics.factors import factor_report
-from app.analytics.risk import risk_report
+from app.analytics.risk import beta, portfolio_returns, risk_report
 from app.services.ai import ask_claude
 from app.services.context import PortfolioContext
 
@@ -11,27 +11,35 @@ SYSTEM_PROMPT = (
 
 
 def build_context_block(ctx: PortfolioContext) -> str:
-    risk = risk_report(ctx.returns[ctx.tickers], ctx.weights, ctx.returns[ctx.benchmark])
+    risk = risk_report(ctx.returns[ctx.tickers], ctx.weights, None)
+    if ctx.beta_frame is not None:
+        risk["beta"] = beta(portfolio_returns(ctx.beta_frame[ctx.tickers], ctx.weights), ctx.beta_frame[ctx.benchmark])
     factors = factor_report(ctx.returns[ctx.tickers], ctx.weights)
 
     top_contributors = factors["risk_contributions"][:3]
     top_factor = factors["factors"][0]
     sorted_weights = sorted(ctx.weights.items(), key=lambda kv: -kv[1])
 
+    def fmt(v, spec):
+        return "n/a" if v is None else format(v, spec)
+
+    window = ctx.window or {}
     lines = [
-        f"Portfolio: {ctx.portfolio.name} ({len(ctx.tickers)} holdings, benchmark {ctx.benchmark})",
+        f"Portfolio: {ctx.portfolio.name} ({len(ctx.tickers)} holdings, benchmark {ctx.benchmark or 'n/a'})",
+        f"Statistics cover {window.get('start')} to {window.get('end')} ({window.get('observations')} daily returns)",
         "Weights: " + ", ".join(f"{t} {w:.1%}" for t, w in sorted_weights),
-        f"Annualized return: {risk['annualized_return']:.2%}",
-        f"Annualized volatility: {risk['annualized_volatility']:.2%}",
-        f"Sharpe ratio: {risk['sharpe_ratio']:.2f}",
-        f"Sortino ratio: {risk['sortino_ratio']:.2f}",
-        f"Max drawdown: {risk['max_drawdown']:.2%}",
-        f"95% 1-day VaR: {risk['var_95']:.2%}, CVaR: {risk['cvar_95']:.2%}",
-        f"Beta vs {ctx.benchmark}: {risk['beta']:.2f}",
+        f"Annualized return: {fmt(risk['annualized_return'], '.2%')}",
+        f"Annualized volatility: {fmt(risk['annualized_volatility'], '.2%')}",
+        f"Sharpe ratio: {fmt(risk['sharpe_ratio'], '.2f')}",
+        f"Sortino ratio: {fmt(risk['sortino_ratio'], '.2f')}",
+        f"Max drawdown: {fmt(risk['max_drawdown'], '.2%')}",
+        f"95% 1-day VaR: {fmt(risk['var_95'], '.2%')}, CVaR: {fmt(risk['cvar_95'], '.2%')}",
+        f"Beta vs {ctx.benchmark or 'benchmark'}: {fmt(risk['beta'], '.2f')}",
         f"Dominant risk factor explains {top_factor['variance_explained']:.1%} of portfolio variance",
         "Top risk contributors: "
         + ", ".join(f"{c['ticker']} ({c['risk_contribution_pct']:.1%} of portfolio risk)" for c in top_contributors),
     ]
+    lines += [f"Data note: {w}" for w in ctx.warnings]
     return "\n".join(lines)
 
 

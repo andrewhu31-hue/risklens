@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
 
-from app.limiter import limiter
+from app.limiter import AUTH_LIMIT, limiter
 from app.models.database import User, get_db
-from app.services.auth import create_access_token, hash_password, verify_password
+from app.services.auth import MAX_PASSWORD_BYTES, create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -13,6 +13,13 @@ class AuthBody(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
+    @field_validator("password")
+    @classmethod
+    def password_fits_bcrypt(cls, v: str) -> str:
+        if len(v.encode()) > MAX_PASSWORD_BYTES:
+            raise ValueError(f"password must be at most {MAX_PASSWORD_BYTES} bytes")
+        return v
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -20,7 +27,7 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit(AUTH_LIMIT)
 def register(request: Request, body: AuthBody, db: Session = Depends(get_db)):
     email = body.email.lower()
     if db.query(User).filter(User.email == email).first() is not None:
@@ -34,7 +41,7 @@ def register(request: Request, body: AuthBody, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit(AUTH_LIMIT)
 def login(request: Request, body: AuthBody, db: Session = Depends(get_db)):
     email = body.email.lower()
     user = db.query(User).filter(User.email == email).first()

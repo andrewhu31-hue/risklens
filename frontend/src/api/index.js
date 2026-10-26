@@ -3,7 +3,8 @@ import axios from "axios";
 const TOKEN_KEY = "risklens_token";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+  // Production builds call the API on the same origin under /api (see vercel.json).
+  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "/api" : "http://localhost:8000"),
   headers: import.meta.env.VITE_API_KEY ? { "X-API-Key": import.meta.env.VITE_API_KEY } : {},
 });
 
@@ -45,6 +46,13 @@ export const createPortfolio = (name, benchmark) =>
   api.post("/portfolios", { name, benchmark }).then((r) => r.data);
 
 export const getPortfolio = (id) => api.get(`/portfolios/${id}`).then((r) => r.data);
+
+export const listPortfolios = () => api.get("/portfolios").then((r) => r.data.portfolios);
+
+export const deletePortfolio = (id) => api.delete(`/portfolios/${id}`).then((r) => r.data);
+
+export const deleteHolding = (id, ticker) =>
+  api.delete(`/portfolios/${id}/holdings/${encodeURIComponent(ticker)}`).then((r) => r.data);
 
 export const addHoldings = (id, holdings) =>
   api.post(`/portfolios/${id}/holdings`, holdings).then((r) => r.data);

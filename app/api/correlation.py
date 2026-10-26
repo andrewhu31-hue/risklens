@@ -1,20 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.api.deps import load_context, meta
+from app.limiter import ANALYTICS_LIMIT, limiter
 from app.models.database import User, get_db
 from app.services.auth import get_current_user
-from app.services.context import load_portfolio_context
 
 router = APIRouter(prefix="/portfolios", tags=["correlation"])
 
 
 @router.get("/{portfolio_id}/correlation")
+@limiter.limit(ANALYTICS_LIMIT)
 def get_correlation(
-    portfolio_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    request: Request,
+    portfolio_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    try:
-        ctx = load_portfolio_context(db, portfolio_id, current_user.id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    ctx = load_context(db, portfolio_id, current_user.id)
     corr = ctx.returns[ctx.tickers].corr()
-    return {"tickers": ctx.tickers, "matrix": corr.round(4).values.tolist()}
+    # A holding with constant prices has undefined correlation: returned as null.
+    matrix = [[None if v != v else round(float(v), 4) for v in row] for row in corr.values.tolist()]
+    return {"tickers": ctx.tickers, "matrix": matrix, **meta(ctx)}

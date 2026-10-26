@@ -1,16 +1,18 @@
-fastapi
-uvicorn[standard]
-sqlalchemy>=2.0
-pydantic
-python-dotenv
-yfinance
-pandas
-numpy
-scipy
-slowapi
-anthropic
-python-multipart
-pyjwt
-bcrypt
-email-validator
-pytest
+# Runtime dependencies (also what Vercel installs for the API function).
+# Pinned: an unpinned FastAPI upgrade previously disabled the default rate limit
+# silently (routers became _IncludedRouter objects slowapi's middleware can't see).
+fastapi==0.162.0
+SQLAlchemy==2.1.6
+pydantic==2.14.1
+python-dotenv==1.2.4
+yfinance==1.7.0
+pandas==3.1.0
+numpy==2.5.4
+scipy==1.18.1
+slowapi==0.1.10
+anthropic==2.3.0
+python-multipart==0.0.32
+PyJWT==2.15.1
+bcrypt==5.0.0
+email-validator==2.3.0
+psycopg[binary]==3.3.6

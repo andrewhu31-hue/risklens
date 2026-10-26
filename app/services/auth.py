@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -6,17 +7,39 @@ import jwt
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.models.database import User, get_db
+from app.models.database import AppSetting, SessionLocal, User, get_db
 
 TOKEN_TTL = timedelta(days=7)
 JWT_ALGORITHM = "HS256"
+MAX_PASSWORD_BYTES = 72  # bcrypt's hard limit
+
+_secret_cache: str | None = None
 
 
 def _get_secret() -> str:
-    secret = os.getenv("JWT_SECRET")
-    if not secret:
-        raise RuntimeError("JWT_SECRET is not set")
-    return secret
+    """JWT_SECRET from the environment, or — when unset — a random 256-bit secret
+    generated once and stored in the database, so a deployment works without a
+    manually configured secret and tokens survive restarts."""
+    global _secret_cache
+    env = os.getenv("JWT_SECRET")
+    if env:
+        return env
+    if _secret_cache:
+        return _secret_cache
+    db = SessionLocal()
+    try:
+        row = db.get(AppSetting, "jwt_secret")
+        if row is None:
+            db.add(AppSetting(key="jwt_secret", value=secrets.token_hex(32)))
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()  # another instance created it first
+            row = db.get(AppSetting, "jwt_secret")
+        _secret_cache = row.value
+        return _secret_cache
+    finally:
+        db.close()
 
 
 def hash_password(password: str) -> str:
@@ -24,6 +47,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    if len(password.encode()) > MAX_PASSWORD_BYTES:
+        return False
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
@@ -38,10 +63,15 @@ def create_access_token(user_id: str) -> str:
 def decode_access_token(token: str) -> str:
     """Returns the user id encoded in a valid token, raises ValueError otherwise."""
     try:
-        payload = jwt.decode(token, _get_secret(), algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, _get_secret(), algorithms=[JWT_ALGORITHM], options={"require": ["exp", "sub"]}
+        )
     except jwt.PyJWTError as e:
         raise ValueError(f"invalid token: {e}") from e
-    return payload["sub"]
+    sub = payload.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise ValueError("invalid token: bad subject")
+    return sub
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:

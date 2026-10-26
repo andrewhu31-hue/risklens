@@ -4,7 +4,10 @@ import MetricCard from "../ui/MetricCard.jsx";
 import SectionHeader from "../ui/SectionHeader.jsx";
 import { SkeletonGrid } from "../ui/Skeleton.jsx";
 
-const pct = (v) => `${(v * 100).toFixed(2)}%`;
+import { num, pct as fmtPct } from "../../format.js";
+import DataNotes from "../ui/DataNotes.jsx";
+
+const pct = (v) => fmtPct(v, 2);
 
 export default function RiskTab({ portfolioId }) {
   const [risk, setRisk] = useState(null);
@@ -33,15 +36,16 @@ export default function RiskTab({ portfolioId }) {
           tone={risk.annualized_return >= 0 ? "positive" : "negative"}
         />
         <MetricCard label="Annualized Volatility" value={pct(risk.annualized_volatility)} />
-        <MetricCard label="Sharpe Ratio" value={risk.sharpe_ratio.toFixed(2)} />
-        <MetricCard label="Sortino Ratio" value={risk.sortino_ratio.toFixed(2)} />
+        <MetricCard label="Sharpe Ratio" value={num(risk.sharpe_ratio)} />
+        <MetricCard label="Sortino Ratio" value={num(risk.sortino_ratio)} />
         <MetricCard label="Max Drawdown" value={pct(risk.max_drawdown)} tone="negative" />
-        <MetricCard label="Beta" value={risk.beta.toFixed(2)} sublabel="vs benchmark" />
+        <MetricCard label="Beta" value={num(risk.beta)} sublabel={risk.benchmark ? `vs ${risk.benchmark}` : "no benchmark data"} />
         <MetricCard label="95% VaR (1-day)" value={pct(risk.var_95)} tone="negative" />
         <MetricCard label="95% CVaR (1-day)" value={pct(risk.cvar_95)} tone="negative" />
         <MetricCard label="99% VaR (1-day)" value={pct(risk.var_99)} tone="negative" />
         <MetricCard label="99% CVaR (1-day)" value={pct(risk.cvar_99)} tone="negative" />
       </div>
+      <DataNotes window={risk.window} warnings={risk.warnings} />
     </div>
   );
 }

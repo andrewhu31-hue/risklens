@@ -4,9 +4,17 @@ import { FrontierScatter } from "../ui/Charts.jsx";
 import SectionHeader from "../ui/SectionHeader.jsx";
 import { BlockSkeleton } from "../ui/Skeleton.jsx";
 
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
+import { num, pct } from "../../format.js";
 
-function WeightBar({ label, weights }) {
+function WeightBar({ label, weights, failed }) {
+  if (failed || !weights) {
+    return (
+      <div className="glass-card p-4">
+        <span className="text-sm font-medium text-slate-200">{label}</span>
+        <p className="mt-3 text-xs text-amber-400">The optimizer could not find a solution for this portfolio.</p>
+      </div>
+    );
+  }
   const entries = Object.entries(weights).sort((a, b) => b[1] - a[1]);
   return (
     <div className="glass-card p-4">
@@ -50,14 +58,16 @@ export default function OptimizerTab({ portfolioId }) {
         subtitle="Current weights vs. minimum-variance and maximum-Sharpe portfolios, solved via constrained quadratic optimization"
       />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <WeightBar label={`Current (Sharpe ${data.current.sharpe.toFixed(2)})`} weights={data.current.weights} />
+        <WeightBar label={`Current (Sharpe ${num(data.current.sharpe)})`} weights={data.current.weights} />
         <WeightBar
-          label={`Min Variance (Sharpe ${data.min_variance.sharpe.toFixed(2)})`}
+          label={`Min Variance (Sharpe ${num(data.min_variance.sharpe)})`}
           weights={data.min_variance.weights}
+          failed={data.min_variance.status === "failed"}
         />
         <WeightBar
-          label={`Max Sharpe (Sharpe ${data.max_sharpe.sharpe.toFixed(2)})`}
+          label={`Max Sharpe (Sharpe ${num(data.max_sharpe.sharpe)})`}
           weights={data.max_sharpe.weights}
+          failed={data.max_sharpe.status === "failed"}
         />
       </div>
 
