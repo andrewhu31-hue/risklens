@@ -7,22 +7,37 @@ import OptimizerTab from "../components/tabs/OptimizerTab.jsx";
 import OverviewTab from "../components/tabs/OverviewTab.jsx";
 import RiskTab from "../components/tabs/RiskTab.jsx";
 import StressTab from "../components/tabs/StressTab.jsx";
+import TopBar from "../components/ui/TopBar.jsx";
 
 const TABS = [
   { id: "overview", label: "Overview", Component: OverviewTab },
   { id: "risk", label: "Risk", Component: RiskTab },
   { id: "factors", label: "Factors", Component: FactorsTab },
   { id: "correlation", label: "Correlation", Component: CorrelationTab },
-  { id: "stress", label: "Stress Test", Component: StressTab },
+  { id: "stress", label: "Stress tests", Component: StressTab },
   { id: "optimizer", label: "Optimizer", Component: OptimizerTab },
   { id: "ask", label: "Ask AI", Component: AskTab },
 ];
 
+const tabFromHash = () => {
+  const id = window.location.hash.replace("#", "");
+  return TABS.some((t) => t.id === id) ? id : "overview";
+};
+
 export default function Dashboard({ portfolioId, onReset, onLogout }) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTabState] = useState(tabFromHash);
   const [portfolio, setPortfolio] = useState(null);
   const [version, setVersion] = useState(0); // bump to reload every tab after an edit
   const [notFound, setNotFound] = useState(false);
+
+  const setTab = (id) => {
+    setTabState(id);
+    try {
+      window.history.replaceState(null, "", `#${id}`);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     getPortfolio(portfolioId)
@@ -38,13 +53,36 @@ export default function Dashboard({ portfolioId, onReset, onLogout }) {
     setVersion((v) => v + 1);
   };
 
+  const leave = () => {
+    try {
+      window.history.replaceState(null, "", window.location.pathname);
+    } catch {
+      /* ignore */
+    }
+    onReset();
+  };
+
+  const bar = (
+    <TopBar>
+      <button onClick={leave} className="btn-quiet py-1.5">
+        All portfolios
+      </button>
+      <button onClick={onLogout} className="btn-quiet py-1.5">
+        Log out
+      </button>
+    </TopBar>
+  );
+
   if (notFound) {
     return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
-        <p className="text-slate-300">This portfolio no longer exists.</p>
-        <button onClick={onReset} className="text-sky-400 hover:text-sky-300 text-sm">
-          Back to your portfolios
-        </button>
+      <div className="min-h-screen">
+        {bar}
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+          <p className="text-ink">This portfolio no longer exists.</p>
+          <button onClick={leave} className="link mt-3 text-sm font-medium">
+            Back to your portfolios
+          </button>
+        </main>
       </div>
     );
   }
@@ -52,64 +90,63 @@ export default function Dashboard({ portfolioId, onReset, onLogout }) {
   const ActiveTab = TABS.find((t) => t.id === tab)?.Component;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <header className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100">{portfolio?.name || "Portfolio"}</h1>
-          <p className="text-sm text-slate-400">
-            {portfolio ? `${portfolio.positions.length} positions · benchmark ${portfolio.benchmark}` : ""}
+    <div className="min-h-screen">
+      {bar}
+      <div className="border-b border-rule bg-panel">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8">
+          <h1 className="text-[28px] leading-tight font-semibold tracking-tight text-ink">
+            {portfolio?.name || " "}
+          </h1>
+          <p className="mt-1 text-sm text-muted min-h-[1.25rem]">
+            {portfolio
+              ? `${portfolio.positions.length} ${portfolio.positions.length === 1 ? "holding" : "holdings"}, compared with ${portfolio.benchmark}`
+              : ""}
           </p>
           {portfolio && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
+            <ul className="flex flex-wrap gap-1.5 mt-4" aria-label="Holdings">
               {portfolio.positions.map((p) => (
-                <span
+                <li
                   key={p.ticker}
-                  className="text-xs text-slate-300 border border-white/10 rounded-md pl-2 pr-1 py-0.5 flex items-center gap-1"
+                  className="group inline-flex items-center gap-1.5 rounded-panel border border-rule bg-paper pl-2.5 pr-1 py-1 text-xs"
                 >
-                  {p.ticker} · {p.shares.toLocaleString()}
+                  <span className="font-semibold text-ink">{p.ticker}</span>
+                  <span className="text-muted tabular-nums">{p.shares.toLocaleString()} sh</span>
                   <button
                     onClick={() => removePosition(p.ticker)}
-                    title={`Remove ${p.ticker}`}
-                    className="text-slate-500 hover:text-red-400 px-1"
+                    aria-label={`Remove ${p.ticker}`}
+                    className="h-5 w-5 grid place-items-center rounded text-muted-faint hover:text-loss hover:bg-panel"
                   >
-                    ✕
+                    <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" stroke="currentColor" strokeWidth="1.8">
+                      <path d="M2 2l8 8M10 2l-8 8" />
+                    </svg>
                   </button>
-                </span>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onReset}
-            className="text-sm text-slate-400 hover:text-slate-200 border border-white/10 rounded-lg px-3 py-1.5"
-          >
-            All portfolios
-          </button>
-          <button
-            onClick={onLogout}
-            className="text-sm text-slate-400 hover:text-slate-200 border border-white/10 rounded-lg px-3 py-1.5"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
 
-      <nav className="flex gap-1 mb-6 border-b border-white/10 overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${
-              tab === t.id ? "border-sky-400 text-sky-300" : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+          <nav className="mt-6 -mb-px flex gap-6 overflow-x-auto" aria-label="Analysis">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                aria-current={tab === t.id ? "page" : undefined}
+                className={`pb-3 text-sm whitespace-nowrap border-b-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-data rounded-t ${
+                  tab === t.id
+                    ? "border-ink text-ink font-semibold"
+                    : "border-transparent text-muted hover:text-ink"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
 
-      {ActiveTab && <ActiveTab key={`${tab}-${version}`} portfolioId={portfolioId} />}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        {ActiveTab && <ActiveTab key={`${tab}-${version}`} portfolioId={portfolioId} portfolio={portfolio} />}
+      </main>
     </div>
   );
 }

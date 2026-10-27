@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { getRisk } from "../../api";
-import MetricCard from "../ui/MetricCard.jsx";
-import SectionHeader from "../ui/SectionHeader.jsx";
-import { SkeletonGrid } from "../ui/Skeleton.jsx";
-
 import { num, pct as fmtPct } from "../../format.js";
 import DataNotes from "../ui/DataNotes.jsx";
+import Figures from "../ui/Figures.jsx";
+import SectionHeader from "../ui/SectionHeader.jsx";
+import { BlockSkeleton, ErrorNote } from "../ui/Skeleton.jsx";
 
 const pct = (v) => fmtPct(v, 2);
 
@@ -17,34 +16,80 @@ export default function RiskTab({ portfolioId }) {
     let cancelled = false;
     getRisk(portfolioId)
       .then((d) => !cancelled && setRisk(d))
-      .catch((e) => !cancelled && setError(e?.response?.data?.detail || "Failed to load"));
+      .catch((e) => !cancelled && setError(e?.response?.data?.detail || "Couldn't load risk metrics."));
     return () => {
       cancelled = true;
     };
   }, [portfolioId]);
 
-  if (error) return <div className="glass-card p-4 text-red-400 text-sm">{error}</div>;
-  if (!risk) return <SkeletonGrid count={8} />;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!risk) return <BlockSkeleton height="h-72" />;
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Risk Metrics" subtitle={`Based on ${risk.num_observations} daily observations`} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard
-          label="Annualized Return"
-          value={pct(risk.annualized_return)}
-          tone={risk.annualized_return >= 0 ? "positive" : "negative"}
+    <div className="space-y-10">
+      <section>
+        <SectionHeader
+          title="Return and volatility"
+          subtitle={`Annualized from ${risk.num_observations.toLocaleString()} daily returns at today's weights.`}
         />
-        <MetricCard label="Annualized Volatility" value={pct(risk.annualized_volatility)} />
-        <MetricCard label="Sharpe Ratio" value={num(risk.sharpe_ratio)} />
-        <MetricCard label="Sortino Ratio" value={num(risk.sortino_ratio)} />
-        <MetricCard label="Max Drawdown" value={pct(risk.max_drawdown)} tone="negative" />
-        <MetricCard label="Beta" value={num(risk.beta)} sublabel={risk.benchmark ? `vs ${risk.benchmark}` : "no benchmark data"} />
-        <MetricCard label="95% VaR (1-day)" value={pct(risk.var_95)} tone="negative" />
-        <MetricCard label="95% CVaR (1-day)" value={pct(risk.cvar_95)} tone="negative" />
-        <MetricCard label="99% VaR (1-day)" value={pct(risk.var_99)} tone="negative" />
-        <MetricCard label="99% CVaR (1-day)" value={pct(risk.cvar_99)} tone="negative" />
-      </div>
+        <Figures
+          columns={5}
+          items={[
+            {
+              label: "Return per year",
+              value: pct(risk.annualized_return),
+              tone: risk.annualized_return >= 0 ? "positive" : "negative",
+            },
+            { label: "Volatility per year", value: pct(risk.annualized_volatility) },
+            { label: "Sharpe ratio", value: num(risk.sharpe_ratio), sublabel: "Return per unit of volatility" },
+            { label: "Sortino ratio", value: num(risk.sortino_ratio), sublabel: "Counts only downside moves" },
+            {
+              label: "Beta",
+              value: num(risk.beta),
+              sublabel: risk.benchmark ? `1.00 moves in step with ${risk.benchmark}` : "No benchmark data",
+            },
+          ]}
+        />
+      </section>
+
+      <section>
+        <SectionHeader
+          title="Bad days"
+          subtitle="Value at risk is the loss a bad day reaches; expected shortfall is the average loss once it does."
+        />
+        <div className="panel overflow-x-auto">
+          <table className="w-full text-sm tabular-nums">
+            <thead>
+              <tr className="text-left text-muted border-b border-rule">
+                <th scope="col" className="px-5 py-3 font-medium">How bad a day</th>
+                <th scope="col" className="px-5 py-3 font-medium text-right">You lose at least</th>
+                <th scope="col" className="px-5 py-3 font-medium text-right">Average loss on those days</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["Worst 1 day in 20", risk.var_95, risk.cvar_95],
+                ["Worst 1 day in 100", risk.var_99, risk.cvar_99],
+              ].map(([label, v, c]) => (
+                <tr key={label} className="border-b border-rule-soft last:border-0">
+                  <th scope="row" className="px-5 py-4 text-left font-medium text-ink">{label}</th>
+                  <td className="px-5 py-4 text-right text-xl font-semibold text-loss">{pct(v)}</td>
+                  <td className="px-5 py-4 text-right text-xl font-semibold text-loss">{pct(c)}</td>
+                </tr>
+              ))}
+              <tr>
+                <th scope="row" className="px-5 py-4 text-left font-medium text-ink">
+                  Worst stretch on record
+                  <span className="block text-xs font-normal text-muted">Peak to trough, over many days</span>
+                </th>
+                <td className="px-5 py-4 text-right text-xl font-semibold text-loss">{pct(Math.abs(risk.max_drawdown ?? NaN))}</td>
+                <td className="px-5 py-4" />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <DataNotes window={risk.window} warnings={risk.warnings} />
     </div>
   );

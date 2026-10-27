@@ -83,6 +83,8 @@ export const getCorrelation = (id) => api.get(`/portfolios/${id}/correlation`).t
 
 export const getOptimizer = (id) => api.get(`/portfolios/${id}/optimize`).then((r) => r.data);
 
+export const getPerformance = (id) => api.get(`/portfolios/${id}/performance`).then((r) => r.data);
+
 export const getStress = (id) => api.get(`/portfolios/${id}/stress`).then((r) => r.data);
 
 export const askQuestion = (id, question) =>

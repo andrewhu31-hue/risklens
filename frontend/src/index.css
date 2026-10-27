@@ -3,13 +3,15 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background: radial-gradient(circle at 20% -10%, #0b1220 0%, #05070d 55%, #030409 100%);
-  color: #e6ecf5;
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  background: #f4f5f7;
+  color: #141a24;
+  font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
 
@@ -17,22 +19,59 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  border-radius: 1rem;
+@layer components {
+  /* A white sheet with a hairline edge. No shadow, no hover glow. */
+  .panel {
+    @apply bg-panel border border-rule rounded-panel;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-panel px-4 py-2 text-sm font-medium transition-colors
+      focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-data
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-ink text-white hover:bg-ink-soft;
+  }
+  .btn-quiet {
+    @apply btn border border-rule bg-panel text-ink-soft hover:border-muted-faint hover:text-ink;
+  }
+
+  .link {
+    @apply text-data underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-data rounded-sm;
+  }
+
+  .field {
+    @apply w-full rounded-panel border border-rule bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted-faint
+      outline-none transition-colors focus:border-data focus:ring-2 focus:ring-data/15;
+  }
+
+  .field-label {
+    @apply flex flex-col gap-1.5 text-sm font-medium text-ink-soft;
+  }
+
+  /* Two- or three-way switch (Log in / Register, Manual / CSV). */
+  .seg {
+    @apply inline-flex rounded-panel border border-rule bg-paper p-0.5 text-sm;
+  }
+  .seg-item {
+    @apply rounded-[4px] px-3 py-1.5 text-muted transition-colors hover:text-ink
+      focus-visible:outline focus-visible:outline-2 focus-visible:outline-data;
+  }
+  .seg-item[aria-pressed="true"] {
+    @apply bg-panel text-ink shadow-[0_0_0_1px_#DCE0E6];
+  }
+
+  .error-text {
+    @apply text-sm text-loss;
+  }
 }
 
-.glass-card:hover {
-  border-color: rgba(56, 189, 248, 0.35);
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 999px;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

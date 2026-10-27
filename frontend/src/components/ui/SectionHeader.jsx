@@ -1,8 +1,8 @@
-export default function SectionHeader({ title, subtitle }) {
+export default function SectionHeader({ title, subtitle, as: Tag = "h2" }) {
   return (
-    <div className="mb-4">
-      <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
-      {subtitle ? <p className="text-sm text-slate-400 mt-0.5">{subtitle}</p> : null}
+    <div className="mb-4 max-w-[68ch]">
+      <Tag className="text-base font-semibold text-ink">{title}</Tag>
+      {subtitle ? <p className="text-sm text-muted mt-1 leading-relaxed">{subtitle}</p> : null}
     </div>
   );
 }
