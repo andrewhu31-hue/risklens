@@ -9,7 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import ask, auth, correlation, factors, optimizer, portfolios, risk, stress
+from app.api import ask, auth, correlation, factors, optimizer, performance, portfolios, risk, stress
 from app.api.deps import SafeJSONResponse, sanitize
 from app.limiter import limiter
 from app.models.database import init_db
@@ -71,6 +71,7 @@ async def security_headers(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(portfolios.router)
 app.include_router(risk.router)
+app.include_router(performance.router)
 app.include_router(factors.router)
 app.include_router(correlation.router)
 app.include_router(optimizer.router)
